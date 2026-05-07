@@ -91,6 +91,17 @@ function decisionBadgeClass(decision) {
     return map[decision] || map[String(decision || "").toLowerCase()] || "badge-pending";
 }
 
+function generateUUID() {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+    }
+    // Fallback for non-secure contexts or older browsers
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}
+
 function showToast(title, body = "") {
     const toast = document.createElement("div");
     toast.className = "toast";
@@ -871,7 +882,7 @@ function logSessionEvent(type, detail) {
     const device = getDeviceProfile();
     const sessionStartedAt = currentUser ? ensureSessionStart() : getSessionStart();
     logs.unshift({
-        id: crypto.randomUUID(),
+        id: generateUUID(),
         type,
         detail,
         timestamp: new Date().toISOString(),
