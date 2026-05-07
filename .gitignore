@@ -36,8 +36,6 @@ env/
 audit_logs/
 temp/
 *.pdf
-*.jpg
-*.png
 .env
 .env.local
 
