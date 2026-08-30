@@ -159,6 +159,12 @@ def ensure_runtime_schema():
         if col not in existing_users:
             cur.execute(f"ALTER TABLE users ADD COLUMN {col} {col_type}")
 
+    # Evaluations Table Contradictions Column
+    cur.execute("PRAGMA table_info(evaluations)")
+    existing_evals = {row[1] for row in cur.fetchall()}
+    if "contradictions" not in existing_evals:
+        cur.execute("ALTER TABLE evaluations ADD COLUMN contradictions TEXT")
+
     conn.commit()
     conn.close()
 
@@ -1472,7 +1478,8 @@ async def get_evaluation_detail(evaluation_id: str, token: str = None, db: Sessi
             "summary": summary,
             "criteria_breakdown": criteria_breakdown,
             "evaluated_at": evaluation.evaluated_at.isoformat(),
-            "audit_id": evaluation.audit_id
+            "audit_id": evaluation.audit_id,
+            "contradictions": json.loads(evaluation.contradictions) if evaluation.contradictions else []
         }
     }
 
@@ -1848,8 +1855,36 @@ async def _evaluate_submission(tender, submission, file_path, db, user_id):
             tender_id=tender.id
         )
         bidder_text, _, _ = evaluator.doc_processor.process_document(file_path)
+        bidder_submission = evaluator.bidder_parser.parse_submission(
+            submission.bidder_name,
+            bidder_text,
+            file_path
+        )
+        
+        # Run ContradictionEngine
+        from src.contradiction_engine import ContradictionEngine
+        engine = ContradictionEngine()
+        contradiction_list = engine.detect_contradictions(bidder_submission)
+        
         proposal = extract_proposal_insights(bidder_text)
         smart_score = calculate_smart_score(result.overall_confidence, tender, proposal)
+        
+        final_decision = result.final_decision.value
+        if contradiction_list:
+            # Under No Silent Rejections policy, always flag for manual review
+            final_decision = "MANUAL_REVIEW"
+            
+        contradiction_rows = []
+        for idx, conflict in enumerate(contradiction_list):
+            severity_tag = "🔥 [CRITICAL]" if conflict["severity"] == "critical" else "⚠️ [DISCREPANCY]"
+            contradiction_rows.append({
+                "criterion_id": f"CONTRA_{idx:03d}",
+                "criterion_name": f"{severity_tag} {conflict['field']}",
+                "status": "MANUAL_REVIEW",
+                "confidence": 0.3,
+                "reason": conflict["message"]
+            })
+            
         proposal_rows = [
             {
                 "criterion_id": "SMART_001",
@@ -1878,6 +1913,8 @@ async def _evaluate_submission(tender, submission, file_path, db, user_id):
             f"Proposal: {proposal['proposal_summary']}\n"
             f"Smart tender score: {smart_score:.0%}"
         )
+        if contradiction_list:
+            summary += f"\n\n🔥 WARNING: {len(contradiction_list)} document contradiction(s) detected. Flagged for manual audit."
         
         # Save evaluation
         evaluation = Evaluation(
@@ -1885,7 +1922,7 @@ async def _evaluate_submission(tender, submission, file_path, db, user_id):
             tender_id=tender.id,
             submission_id=submission.id,
             bidder_name=submission.bidder_name,
-            decision=result.final_decision.value,
+            decision=final_decision,
             confidence=smart_score,
             summary=summary,
             criteria_breakdown=json.dumps([
@@ -1897,9 +1934,10 @@ async def _evaluate_submission(tender, submission, file_path, db, user_id):
                     "reason": c.reason
                 }
                 for c in result.criterion_evaluations
-            ] + proposal_rows),
+            ] + contradiction_rows + proposal_rows),
             evaluated_by=user_id,
-            audit_id=result.audit_id
+            audit_id=result.audit_id,
+            contradictions=json.dumps(contradiction_list) if contradiction_list else None
         )
         
         db.add(evaluation)
@@ -2082,6 +2120,7 @@ async def contractor_history(token: str = None, db: Session = Depends(get_db)):
         items.append({
             "submission_id": sub.id,
             "tender_id": sub.tender_id,
+            "evaluation_id": evaluation.id if evaluation else None,
             "tender_title": tender.title if tender else "Deleted tender",
             "tender_status": tender.status if tender else "unknown",
             "bidder_name": sub.bidder_name,

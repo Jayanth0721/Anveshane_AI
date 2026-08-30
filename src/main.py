@@ -7,7 +7,7 @@ from src.bidder_parser import BidderParser
 from src.evaluation_engine import EvaluationEngine
 from src.explainability import ExplainabilityEngine
 from src.audit_logger import AuditLogger
-
+from backend_api import app #added for vercel deployment
 
 class TenderEvaluator:
     """Main orchestrator for tender evaluation"""

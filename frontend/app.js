@@ -1470,6 +1470,7 @@ async function fetchSubmissionViews() {
                     </div>
                     <div style="margin-top: 16px; display: flex; gap: 8px;">
                         <a href="/api/submissions/document/${item.submission_id}?token=${encodeURIComponent(tok())}" target="_blank" class="btn-ghost btn-sm" style="font-size: 11px;">View Document</a>
+                        ${item.published && item.evaluation_id ? `<button onclick="showEvaluationDetail('${item.evaluation_id}')" class="btn-ghost btn-sm" style="font-size: 11px;">View Report</button>` : ""}
                         ${item.published ? `<button onclick="showTenderTimeline('${item.tender_id}')" class="btn-ghost btn-sm" style="font-size: 11px;">View Timeline</button>` : ""}
                     </div>
                 </article>
@@ -2002,6 +2003,55 @@ async function showEvaluationDetail(evaluationId) {
         const payload = await apiGet(`/evaluations/detail/${evaluationId}`);
         const evaluation = payload.evaluation;
         const breakdown = Array.isArray(evaluation.criteria_breakdown) ? evaluation.criteria_breakdown : [];
+        const contradictions = Array.isArray(evaluation.contradictions) ? evaluation.contradictions : [];
+        
+        let contradictionBanner = "";
+        if (contradictions.length > 0) {
+            // Generate professional template text for clarification request
+            let templateText = `Subject: Clarification Request - Tender Evaluation - ${evaluation.bidder_name}\n\nDear Team,\n\nDuring our automated AI auditing of your bid submission documents for Tender ID: ${evaluation.tender_id || "TENDER"}, our evaluation engine flagged the following critical discrepancy/discrepancies:\n\n`;
+            
+            contradictions.forEach((c, idx) => {
+                templateText += `${idx + 1}. [${c.field.toUpperCase()}] ${c.message}\n   Evidence: ${c.evidence}\n\n`;
+            });
+            
+            templateText += `Under our procurement guidelines, we require an official explanation and verified documentation to reconcile these contradictions before we can finalize our verdict.\n\nPlease reply directly to this support thread or submit the requested certified papers.\n\nSincerely,\nProcurement Audit Officer\nAnveshane AI Portal`;
+
+            contradictionBanner = `
+                <div class="contradiction-banner">
+                    <div class="contradiction-head">
+                        <div class="contradiction-title-area">
+                            <div class="contradiction-pulse"></div>
+                            <span class="contradiction-title">🔥 Contradiction Engine Alert</span>
+                        </div>
+                        <span class="contradiction-badge">${contradictions.length} Flagged</span>
+                    </div>
+                    <div class="contradiction-list-inner" style="display:flex; flex-direction:column; gap:8px;">
+                        ${contradictions.map(c => `
+                            <div class="contradiction-item">
+                                <strong style="color:#b91c1c">${escapeHtml(c.field)} Check:</strong> ${escapeHtml(c.message)}
+                                <div class="contradiction-evidence">${escapeHtml(c.evidence)}</div>
+                            </div>
+                        `).join("")}
+                    </div>
+                    
+                    ${currentUser?.role === "admin" ? `
+                        <div style="margin-top: 14px; text-align: right;">
+                            <button class="btn-solid btn-sm" style="background: #dc2626; color: white;" onclick="toggleDraftClarification(this)">
+                                Draft Clarification Ticket
+                            </button>
+                        </div>
+                        <div class="draft-clarification-container hidden" style="margin-top: 12px;">
+                            <div class="draft-header">
+                                <span>Copy Clarification Draft Template</span>
+                                <button class="btn-ghost btn-sm" onclick="copyClarificationDraft(this)">Copy to Clipboard</button>
+                            </div>
+                            <textarea class="draft-textbox" rows="10" readonly>${escapeHtml(templateText)}</textarea>
+                        </div>
+                    ` : ""}
+                </div>
+            `;
+        }
+
         const adminReviewControls = currentUser?.role === "admin" ? `
             <div class="criterion-row">
                 <div class="criterion-row-top">
@@ -2040,6 +2090,7 @@ async function showEvaluationDetail(evaluationId) {
                     <div class="value mono">${escapeHtml(evaluation.audit_id || "Not available")}</div>
                 </div>
             </div>
+            ${contradictionBanner}
             ${breakdown.map(item => `
                 <div class="criterion-row">
                     <div class="criterion-row-top">
@@ -2061,6 +2112,41 @@ async function showEvaluationDetail(evaluationId) {
         showToast("Unable to load report", error.message);
     }
 }
+
+function toggleDraftClarification(button) {
+    const banner = button.closest(".contradiction-banner");
+    if (!banner) return;
+    const container = banner.querySelector(".draft-clarification-container");
+    if (!container) return;
+    container.classList.toggle("hidden");
+    button.textContent = container.classList.contains("hidden") ? "Draft Clarification Ticket" : "Hide Template";
+}
+
+function copyClarificationDraft(button) {
+    const container = button.closest(".draft-clarification-container");
+    if (!container) return;
+    const textarea = container.querySelector(".draft-textbox");
+    if (!textarea) return;
+    
+    textarea.select();
+    textarea.setSelectionRange(0, 99999);
+    
+    try {
+        navigator.clipboard.writeText(textarea.value);
+        button.textContent = "Copied!";
+        button.style.color = "var(--green)";
+        setTimeout(() => {
+            button.textContent = "Copy to Clipboard";
+            button.style.color = "";
+        }, 2000);
+    } catch (err) {
+        showToast("Error", "Failed to copy text automatically.");
+    }
+}
+
+// Global binders
+window.toggleDraftClarification = toggleDraftClarification;
+window.copyClarificationDraft = copyClarificationDraft;
 
 async function submitEvaluationOverride(evaluationId) {
     const newDecision = el("evaluation-override-decision")?.value || "";
@@ -2516,7 +2602,7 @@ function renderRoleWorkspace(role) {
                     <button class="workspace-action" type="button" onclick="showPage('submissions')">Open Submissions</button>
                 </div>
             </div>
-            <div id="contractor-recent-submissions" class="recent-activity-section" style="margin-top: 32px;"></div>
+            <div id="contractor-recent-submissions" class="recent-activity-section" style="margin-top: 32px; padding: 0 28px 28px 28px;"></div>
         </section>
     `;
 

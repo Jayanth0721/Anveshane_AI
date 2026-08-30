@@ -113,6 +113,7 @@ class Evaluation(Base):
     evaluated_at = Column(DateTime, default=datetime.utcnow)
     evaluated_by = Column(String, nullable=True)
     audit_id = Column(String, unique=True)
+    contradictions = Column(Text, nullable=True)  # JSON list of contradictions
 
 
 class Override(Base):

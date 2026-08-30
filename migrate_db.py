@@ -25,7 +25,7 @@ for col, col_type in new_columns:
         cur.execute(f"ALTER TABLE tenders ADD COLUMN {col} {col_type}")
         print(f"  + Added column: tenders.{col}")
     else:
-        print(f"  ✓ Already exists: tenders.{col}")
+        print(f"  * Already exists: tenders.{col}")
 
 # Add citizen user if not present
 import uuid, sys
@@ -55,11 +55,11 @@ if not exists:
     db.commit()
     print("  + Created citizen user")
 else:
-    print("  ✓ Citizen user already exists")
+    print("  * Citizen user already exists")
 
 db.close()
 
-print("\n✅ Migration complete!")
+print("\n=== Migration complete! ===")
 print("\nAll credentials:")
 print("  Admin:      admin@tender.com      / Admin@123")
 print("  Contractor: contractor@tender.com  / Contractor@123")
