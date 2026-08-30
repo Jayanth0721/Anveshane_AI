@@ -18,6 +18,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger("audit_logger")
 
+#added these code for folder issue(vercel tmp)
+BASE_DIR = Path("/tmp") if os.getenv("VERCEL") else Path(".")
+LOG_DIR = BASE_DIR / "audit_logs"
+UPLOAD_DIR = BASE_DIR / "uploads"
+
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
 
 class AuditLogger:
     """Manage audit trails for full traceability"""
